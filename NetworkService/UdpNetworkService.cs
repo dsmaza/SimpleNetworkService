@@ -115,7 +115,7 @@ namespace NetworkService
                         _udpClient = new UdpClient { EnableBroadcast = true, ExclusiveAddressUse = false };
                         _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                         _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, Port));
-                        _udpClient.BeginReceive(OnUdpDataReceived, _udpClient);
+                        BeginReceive();
                     }
                 }
             }
@@ -146,26 +146,36 @@ namespace NetworkService
                     if (Enabled)
                     {
                         var ipEndPoint = new IPEndPoint(IPAddress.Any, Port);
-                        var udpClient = (UdpClient)asyncResult.AsyncState;
-                        byte[] data = udpClient.EndReceive(asyncResult, ref ipEndPoint);
+                        byte[] data = new byte[0];
+                        try
+                        {
+                            var udpClient = (UdpClient)asyncResult.AsyncState;
+                            data = udpClient.EndReceive(asyncResult, ref ipEndPoint);
+                        }
+                        catch { }
                         ProcessDataReceived(data, ipEndPoint);
-                        _udpClient.BeginReceive(OnUdpDataReceived, _udpClient);
+                        BeginReceive();
                     }
                 }
             }
         }
 
+        private void BeginReceive()
+        {
+            _udpClient.BeginReceive(OnUdpDataReceived, _udpClient);
+        }
+
         private void ProcessDataReceived(byte[] data, IPEndPoint ipEndPoint)
         {
-            bool isLocal = LocalIpAddress.Equals(ipEndPoint.Address);
-            if (!isLocal || AllowLocal)
+            if (data.Length > 0)
             {
-                var networkData = new NetworkData(Encoding.UTF8.GetString(data));
-                if (networkData.NetworkName != NetworkName) return;
-                if (networkData.ServiceName != ServiceName) return;
-                if (NetworkDataReceived != null)
+                bool isLocal = LocalIpAddress.Equals(ipEndPoint.Address);
+                if (!isLocal || AllowLocal)
                 {
-                    NetworkDataReceived(this, new NetworkDataReceived
+                    var networkData = new NetworkData(Encoding.UTF8.GetString(data));
+                    if (networkData.NetworkName != NetworkName) return;
+                    if (networkData.ServiceName != ServiceName) return;
+                    NetworkDataReceived?.Invoke(this, new NetworkDataReceived
                     {
                         Data = networkData,
                         IpAddress = ipEndPoint.Address.ToString(),
